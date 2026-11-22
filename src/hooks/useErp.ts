@@ -102,9 +102,9 @@ export function useErp() {
   )
 
   const saveProduct = useCallback(
-    (input: ProductInput, id?: string) =>
+    (input: ProductInput, id?: string, imageFiles: File[] = []) =>
       runAction(
-        () => (id ? erpService.updateProduct(id, input) : erpService.createProduct(input)),
+        () => erpService.saveProduct(input, id, imageFiles),
         id ? 'Product updated successfully.' : 'Product added successfully.',
       ),
     [runAction],

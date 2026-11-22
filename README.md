@@ -1,6 +1,6 @@
 # Ledgerly — Simple ERP System
 
-A clean React + TypeScript ERP starter that keeps inventory, purchases, sales, and the financial ledger synchronized through PostgreSQL transactions in Supabase.
+A clean React + TypeScript ERP starter with rich product catalogs, variant-level inventory, product images, purchases, sales, and a synchronized financial ledger powered by PostgreSQL transactions in Supabase.
 
 ## Folder structure
 
@@ -30,8 +30,11 @@ A clean React + TypeScript ERP starter that keeps inventory, purchases, sales, a
 
 ## Architecture
 
-- **Atomic writes:** `create_purchase_transaction` and `create_sale_transaction` lock the selected product row, validate input, update stock, insert the business record, and post the ledger entry within one database transaction.
-- **Race-safe sales:** stock is checked after `SELECT ... FOR UPDATE`, preventing concurrent sales from overselling the same stock.
+- **Rich product catalog:** products support descriptions, categories, brands, barcodes, reorder levels, up to five images, and independently priced size/color variants.
+- **Atomic catalog writes:** `save_product_catalog` creates or updates a product and its active variants in one PostgreSQL transaction. Existing products are automatically backfilled with a default variant.
+- **Atomic stock writes:** `create_purchase_transaction_v2` and `create_sale_transaction_v2` lock the selected variant, update its stock, synchronize the parent product total, insert the business record, and post the ledger entry within one transaction.
+- **Race-safe sales:** stock is checked after locking the exact size/color variant, preventing concurrent sales from overselling it.
+- **Image storage:** files are validated client-side and stored in the public `product-images` Supabase Storage bucket; only the public URL and metadata are kept in PostgreSQL.
 - **Service boundary:** components never access Supabase directly. All remote I/O lives in `src/services/erpService.ts`; `useErp` coordinates state and feedback.
 - **Public demo RLS:** the included policies intentionally allow anonymous demo reads and product maintenance. Purchases, sales, and ledger writes remain restricted to the validated RPC functions. Replace demo policies with tenant ownership policies before storing real business data.
 - **Responsive UI:** desktop sidebar, mobile drawer, accessible forms, loading skeletons, empty states, inline validation, and action toasts.
@@ -39,7 +42,7 @@ A clean React + TypeScript ERP starter that keeps inventory, purchases, sales, a
 ## Setup
 
 1. Create a Supabase project.
-2. Open **SQL Editor**, paste the complete contents of `schema.sql`, and run it once.
+2. Open **SQL Editor**, paste the complete contents of `schema.sql`, and run it. The script is rerunnable and upgrades an existing Ledgerly database without removing current products or transactions.
 3. Copy the environment template:
 
    ```bash

@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Boxes, PackagePlus, Sparkles } from 'lucide-react'
 import type { Product, Purchase, PurchaseInput } from '../types/erp'
+import { getVariantLabel } from '../types/erp'
 import { dateInputToIso, formatCurrency, formatDate, todayForInput } from '../utils/format'
 import { Button, EmptyState, Field, PageHeading, Panel, SelectField, TableSkeleton } from './ui'
 
 type PurchaseForm = {
   supplierName: string
-  productId: string
+  variantId: string
   quantity: string
   unitPrice: string
   date: string
@@ -15,7 +16,7 @@ type PurchaseForm = {
 type PurchaseErrors = Partial<Record<keyof PurchaseForm, string>>
 
 function initialForm(): PurchaseForm {
-  return { supplierName: '', productId: '', quantity: '1', unitPrice: '', date: todayForInput() }
+  return { supplierName: '', variantId: '', quantity: '1', unitPrice: '', date: todayForInput() }
 }
 
 type PurchaseManagerProps = {
@@ -35,12 +36,15 @@ export function PurchaseManager({
 }: PurchaseManagerProps) {
   const [form, setForm] = useState<PurchaseForm>(initialForm)
   const [errors, setErrors] = useState<PurchaseErrors>({})
-  const selectedProduct = products.find((product) => product.id === form.productId)
+  const variantOptions = products.flatMap((product) =>
+    product.variants.map((variant) => ({ product, variant })),
+  )
+  const selectedOption = variantOptions.find(({ variant }) => variant.id === form.variantId)
   const total = Number(form.quantity || 0) * Number(form.unitPrice || 0)
 
-  const selectProduct = (productId: string) => {
-    const product = products.find((item) => item.id === productId)
-    setForm({ ...form, productId, unitPrice: product ? String(product.purchase_price) : '' })
+  const selectVariant = (variantId: string) => {
+    const option = variantOptions.find(({ variant }) => variant.id === variantId)
+    setForm({ ...form, variantId, unitPrice: option ? String(option.variant.purchase_price) : '' })
   }
 
   const validate = (): PurchaseInput | null => {
@@ -48,7 +52,7 @@ export function PurchaseManager({
     const quantity = Number(form.quantity)
     const unitPrice = Number(form.unitPrice)
     if (!form.supplierName.trim()) nextErrors.supplierName = 'Supplier name is required.'
-    if (!form.productId) nextErrors.productId = 'Select a product.'
+    if (!form.variantId) nextErrors.variantId = 'Select a product variant.'
     if (!Number.isInteger(quantity) || quantity <= 0)
       nextErrors.quantity = 'Quantity must be a positive whole number.'
     if (!Number.isFinite(unitPrice) || unitPrice < 0)
@@ -58,7 +62,8 @@ export function PurchaseManager({
     if (Object.keys(nextErrors).length > 0) return null
     return {
       supplier_name: form.supplierName,
-      product_id: form.productId,
+      product_id: selectedOption?.product.id ?? '',
+      variant_id: form.variantId,
       quantity,
       unit_purchase_price: unitPrice,
       purchased_at: dateInputToIso(form.date),
@@ -98,16 +103,16 @@ export function PurchaseManager({
               onChange={(event) => setForm({ ...form, supplierName: event.target.value })}
             />
             <SelectField
-              label="Product"
-              value={form.productId}
-              error={errors.productId}
-              onChange={(event) => selectProduct(event.target.value)}
-              disabled={products.length === 0}
+              label="Product variant"
+              value={form.variantId}
+              error={errors.variantId}
+              onChange={(event) => selectVariant(event.target.value)}
+              disabled={variantOptions.length === 0}
             >
-              <option value="">{products.length ? 'Select a product' : 'Add a product first'}</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name} ({product.sku})
+              <option value="">{variantOptions.length ? 'Select a product variant' : 'Add a product first'}</option>
+              {variantOptions.map(({ product, variant }) => (
+                <option key={variant.id} value={variant.id}>
+                  {product.name} — {getVariantLabel(variant)} ({variant.sku})
                 </option>
               ))}
             </SelectField>
@@ -145,12 +150,12 @@ export function PurchaseManager({
               </div>
               <div className="mt-3 flex items-end justify-between gap-3">
                 <p className="text-sm leading-5 text-blue-700">
-                  {selectedProduct ? `Stock will increase from ${selectedProduct.stock}.` : 'Select a product to calculate stock.'}
+                  {selectedOption ? `${getVariantLabel(selectedOption.variant)} stock will increase from ${selectedOption.variant.stock}.` : 'Select a variant to calculate stock.'}
                 </p>
                 <p className="shrink-0 text-lg font-bold text-blue-900">{formatCurrency(total)}</p>
               </div>
             </div>
-            <Button type="submit" className="w-full" busy={submitting} disabled={products.length === 0}>
+            <Button type="submit" className="w-full" busy={submitting} disabled={variantOptions.length === 0}>
               <PackagePlus className="h-4 w-4" /> Record purchase
             </Button>
           </form>
@@ -189,7 +194,10 @@ export function PurchaseManager({
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <Boxes className="h-4 w-4 text-slate-400" />
-                          <span className="text-slate-700">{purchase.product?.name ?? 'Unknown product'}</span>
+                          <span className="text-slate-700">
+                            {purchase.product?.name ?? 'Unknown product'}
+                            {purchase.variant ? ` · ${getVariantLabel(purchase.variant)}` : ''}
+                          </span>
                         </div>
                       </td>
                       <td className="px-5 py-4 text-slate-600">{purchase.quantity}</td>

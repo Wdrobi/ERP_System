@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { BadgeCheck, CircleAlert, PackageCheck, ShoppingBag } from 'lucide-react'
 import type { Product, Sale, SaleInput } from '../types/erp'
+import { getVariantLabel } from '../types/erp'
 import { dateInputToIso, formatCurrency, formatDate, todayForInput } from '../utils/format'
 import { Button, EmptyState, Field, PageHeading, Panel, SelectField, TableSkeleton } from './ui'
 
 type SaleForm = {
   customerName: string
-  productId: string
+  variantId: string
   quantity: string
   unitPrice: string
   date: string
@@ -15,7 +16,7 @@ type SaleForm = {
 type SaleErrors = Partial<Record<keyof SaleForm, string>>
 
 function initialForm(): SaleForm {
-  return { customerName: '', productId: '', quantity: '1', unitPrice: '', date: todayForInput() }
+  return { customerName: '', variantId: '', quantity: '1', unitPrice: '', date: todayForInput() }
 }
 
 type SalesManagerProps = {
@@ -29,15 +30,18 @@ type SalesManagerProps = {
 export function SalesManager({ products, sales, loading, submitting, onSubmit }: SalesManagerProps) {
   const [form, setForm] = useState<SaleForm>(initialForm)
   const [errors, setErrors] = useState<SaleErrors>({})
-  const selectedProduct = products.find((product) => product.id === form.productId)
+  const variantOptions = products.flatMap((product) =>
+    product.variants.map((variant) => ({ product, variant })),
+  )
+  const selectedOption = variantOptions.find(({ variant }) => variant.id === form.variantId)
   const requestedQuantity = Number(form.quantity || 0)
   const total = requestedQuantity * Number(form.unitPrice || 0)
-  const exceedsStock = Boolean(selectedProduct && requestedQuantity > selectedProduct.stock)
+  const exceedsStock = Boolean(selectedOption && requestedQuantity > selectedOption.variant.stock)
 
-  const selectProduct = (productId: string) => {
-    const product = products.find((item) => item.id === productId)
-    setForm({ ...form, productId, unitPrice: product ? String(product.selling_price) : '' })
-    setErrors((current) => ({ ...current, productId: undefined, quantity: undefined }))
+  const selectVariant = (variantId: string) => {
+    const option = variantOptions.find(({ variant }) => variant.id === variantId)
+    setForm({ ...form, variantId, unitPrice: option ? String(option.variant.selling_price) : '' })
+    setErrors((current) => ({ ...current, variantId: undefined, quantity: undefined }))
   }
 
   const validate = (): SaleInput | null => {
@@ -45,11 +49,11 @@ export function SalesManager({ products, sales, loading, submitting, onSubmit }:
     const quantity = Number(form.quantity)
     const unitPrice = Number(form.unitPrice)
     if (!form.customerName.trim()) nextErrors.customerName = 'Customer name is required.'
-    if (!form.productId) nextErrors.productId = 'Select a product.'
+    if (!form.variantId) nextErrors.variantId = 'Select a product variant.'
     if (!Number.isInteger(quantity) || quantity <= 0) {
       nextErrors.quantity = 'Quantity must be a positive whole number.'
-    } else if (selectedProduct && quantity > selectedProduct.stock) {
-      nextErrors.quantity = `Only ${selectedProduct.stock} units are available.`
+    } else if (selectedOption && quantity > selectedOption.variant.stock) {
+      nextErrors.quantity = `Only ${selectedOption.variant.stock} units are available.`
     }
     if (!Number.isFinite(unitPrice) || unitPrice < 0)
       nextErrors.unitPrice = 'Enter a valid non-negative price.'
@@ -58,7 +62,8 @@ export function SalesManager({ products, sales, loading, submitting, onSubmit }:
     if (Object.keys(nextErrors).length > 0) return null
     return {
       customer_name: form.customerName,
-      product_id: form.productId,
+      product_id: selectedOption?.product.id ?? '',
+      variant_id: form.variantId,
       quantity,
       unit_selling_price: unitPrice,
       sold_at: dateInputToIso(form.date),
@@ -98,16 +103,16 @@ export function SalesManager({ products, sales, loading, submitting, onSubmit }:
               onChange={(event) => setForm({ ...form, customerName: event.target.value })}
             />
             <SelectField
-              label="Product"
-              value={form.productId}
-              error={errors.productId}
-              onChange={(event) => selectProduct(event.target.value)}
-              disabled={products.length === 0}
+              label="Product variant"
+              value={form.variantId}
+              error={errors.variantId}
+              onChange={(event) => selectVariant(event.target.value)}
+              disabled={variantOptions.length === 0}
             >
-              <option value="">{products.length ? 'Select a product' : 'Add a product first'}</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id} disabled={product.stock === 0}>
-                  {product.name} — {product.stock} in stock
+              <option value="">{variantOptions.length ? 'Select a product variant' : 'Add a product first'}</option>
+              {variantOptions.map(({ product, variant }) => (
+                <option key={variant.id} value={variant.id} disabled={variant.stock === 0}>
+                  {product.name} — {getVariantLabel(variant)} — {variant.stock} in stock
                 </option>
               ))}
             </SelectField>
@@ -117,7 +122,7 @@ export function SalesManager({ products, sales, loading, submitting, onSubmit }:
                 type="number"
                 min="1"
                 step="1"
-                max={selectedProduct?.stock}
+                max={selectedOption?.variant.stock}
                 value={form.quantity}
                 error={errors.quantity}
                 onChange={(event) => setForm({ ...form, quantity: event.target.value })}
@@ -147,11 +152,11 @@ export function SalesManager({ products, sales, loading, submitting, onSubmit }:
               </div>
               <div className="mt-3 flex items-end justify-between gap-3">
                 <p className={`text-sm leading-5 ${exceedsStock ? 'text-rose-700' : 'text-emerald-700'}`}>
-                  {selectedProduct
+                  {selectedOption
                     ? exceedsStock
-                      ? `Requested ${requestedQuantity}; only ${selectedProduct.stock} available.`
-                      : `${selectedProduct.stock} units available now.`
-                    : 'Select a product to see availability.'}
+                      ? `Requested ${requestedQuantity}; only ${selectedOption.variant.stock} available.`
+                      : `${getVariantLabel(selectedOption.variant)} has ${selectedOption.variant.stock} units available.`
+                    : 'Select a variant to see availability.'}
                 </p>
                 <p className={`shrink-0 text-lg font-bold ${exceedsStock ? 'text-rose-900' : 'text-emerald-900'}`}>
                   {formatCurrency(total)}
@@ -162,7 +167,7 @@ export function SalesManager({ products, sales, loading, submitting, onSubmit }:
               type="submit"
               className="w-full"
               busy={submitting}
-              disabled={products.length === 0 || exceedsStock}
+              disabled={variantOptions.length === 0 || exceedsStock}
             >
               <ShoppingBag className="h-4 w-4" /> Record sale
             </Button>
@@ -202,7 +207,10 @@ export function SalesManager({ products, sales, loading, submitting, onSubmit }:
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <PackageCheck className="h-4 w-4 text-slate-400" />
-                          <span className="text-slate-700">{sale.product?.name ?? 'Unknown product'}</span>
+                          <span className="text-slate-700">
+                            {sale.product?.name ?? 'Unknown product'}
+                            {sale.variant ? ` · ${getVariantLabel(sale.variant)}` : ''}
+                          </span>
                         </div>
                       </td>
                       <td className="px-5 py-4 text-slate-600">{sale.quantity}</td>

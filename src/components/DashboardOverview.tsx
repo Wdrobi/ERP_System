@@ -51,7 +51,9 @@ export function DashboardOverview({
   transactions,
   loading,
 }: DashboardOverviewProps) {
-  const lowStock = products.filter((product) => product.stock > 0 && product.stock < 5)
+  const lowStock = products.filter(
+    (product) => product.stock > 0 && product.stock < product.reorder_level,
+  )
   const outOfStock = products.filter((product) => product.stock === 0)
   const recentTransactions = transactions.slice(0, 5)
 
